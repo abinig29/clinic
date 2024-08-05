@@ -1,0 +1,555 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
+}
+
+enum EmploymentStatus {
+  FULL_TIME
+  PART_TIME
+  CONTRACTOR
+  TEMPORARY
+  CASUAL
+}
+
+enum PaymentType {
+  ONLINE
+  CASH
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  STARTED
+  CANCELLED
+  RESCHEDULED
+  COMPLETED
+}
+
+enum PlanStatus {
+  Pending
+  Active
+  Completed
+  Hold
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  NO_PRIORITY
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum InventoryAction {
+  ADD
+  REMOVE
+}
+
+model Token {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String   @unique
+  expires     DateTime
+  blacklisted Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id          String  @id @default(cuid())
+  password    String
+  phoneNumber String  @unique
+  email       String?
+
+  Token  Token?
+  clinic Clinic? @relation("owner")
+
+  permission              Permission?
+  profile                 Profile?
+  verificationCodeExpires BigInt?
+  passwordResetCode       String?
+  role                    String?
+
+  firstTimeLogin  Boolean            @default(true)
+  LoginLog        LoginActivityLog[]
+  SecurityProfile SecurityProfile?
+
+  patientCreatedBy           Patient[]             @relation("patientCreatedBy")
+  patientHistoryCreatedBy    PatientHistory[]      @relation("patientHistoryCreatedBy")
+  patientVitalCreatedBy      PatientVital[]        @relation("patientVitalCreatedBy")
+  patientExaminatioCreatedBy PatientExamination[]  @relation("patientExaminationCreatedBy")
+  patientPaymentCreatedBy    PatientPayment[]      @relation("patientPaymentCreatedBy")
+  patientAllergyCreatedBy    PatientAllergy[]      @relation("patientAllergyCreatedBy")
+  patientDiagnosisLog        PatientDiagnosisLog[]
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  PatientPlanLog PatientPlanLog[]
+  Appointment    Appointment[]
+  Notification   Notification[]
+  createdTask    Task[]           @relation("createdBy")
+  assignedTask   Task[]           @relation("assignedTo")
+  Comment        Comment[]
+  WorksapceUser  WorkspaceUser[]
+  patients       PatientDoctor[]
+  InventoryLog   InventoryLog[]
+
+  @@index([email, phoneNumber])
+}
+
+model LoginActivityLog {
+  id        String   @id @default(cuid())
+  userId    String
+  loginTime DateTime @default(now())
+  ipAddress String
+  userAgent String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityProfile {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  fingerprintHash String?
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  softDeleted                Boolean  @default(false)
+  saveActivityLog            Boolean  @default(false)
+  notifyOnSuspiciousActivity Boolean  @default(true)
+  notifyOnNewBrowserLogin    Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+
+model Profile {
+  id               String           @id @default(cuid())
+  fullName         String
+  addresses        String[]
+  gender           String
+  dateOfBirth      DateTime?
+  salary           Float?
+  emernContact     String?
+  note             String?
+  employmentStatus EmploymentStatus
+  profileImg       String?
+
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Clinic {
+  id          String   @id @default(cuid())
+  name        String
+  socialMedia Json
+  email       String?
+  phoneNumber String
+  ownerId     String   @unique
+  services    String[]
+
+  owner       User     @relation("owner", fields: [ownerId], references: [id], onDelete: Cascade)
+  branch      Branch[]
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Branch {
+  id                 String        @id @default(cuid())
+  name               String
+  email              String
+  phoneNumber        String
+  address            Json
+  clinicId           String
+  clinic             Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  startMedicalNumber Int?
+  Patient            Patient[]
+  Appointment        Appointment[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  branchId    String[]
+  permissions String[]
+  grantAll    Boolean  @default(false)
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        String
+  grantAll    Boolean  @default(false)
+  permissions String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Patient {
+  id                   String @id @default(cuid())
+  medicalRecordNumber  Int
+  fullName             String
+  age                  Int
+  gender               Gender
+  phoneNumber          String @unique
+  address              Json
+  insuranceCompanyName String
+  insuranceNumber      String
+  registerById         String
+  registerBy           User   @relation("patientCreatedBy", fields: [registerById], references: [id], onDelete: Cascade)
+
+  branchId String?
+  branch   Branch? @relation(fields: [branchId], references: [id], onDelete: SetNull)
+
+  emergencyContactName    String
+  emergencyContactPhone   String
+  emergencyContactAddress Json
+
+  pulledOutTeeth Int[]
+
+  softDeleted Boolean @default(false)
+  fixedPrice  Float?
+  pinned      Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  PatientHistory     PatientHistory[]
+  PatientVital       PatientVital[]
+  PatientExamination PatientExamination[]
+  PatientPayment     PatientPayment[]
+  PatientAllergy     PatientAllergy[]
+  PatientDiagnosis   PatientDiagnosis[]
+  PatientPlan        PatientPlan[]
+  Appointment        Appointment[]
+  PatientDoctor      PatientDoctor[]
+}
+
+model PatientDoctor {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctor    User    @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+}
+
+model PatientHistory {
+  id                    String  @id @default(cuid())
+  chiefCompliant        String
+  historyPresentIllness String
+  pastMedicalHistory    String
+  pastDenatlHistory     String
+  registerBy            User    @relation("patientHistoryCreatedBy", fields: [registerById], references: [id])
+  registerById          String
+  patientId             String
+  patient               Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PatientVital {
+  id           String   @id @default(cuid())
+  bp           Json
+  weight       Float
+  temp         String
+  hr           Int
+  registerBy   User     @relation("patientVitalCreatedBy", fields: [registerById], references: [id])
+  registerById String
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PatientExamination {
+  id               String   @id @default(cuid())
+  intraOralIntro   String?
+  intraOralSummary String?
+  intraOralTeeth   Int[]    @default([])
+  intraOralImages  String[] @default([])
+
+  extraOralIntro   String?
+  extraOralSummary String?
+  extraOralImages  String[] @default([])
+
+  registerBy   User    @relation("patientExaminationCreatedBy", fields: [registerById], references: [id])
+  registerById String
+  patientId    String
+  patient      Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PatientPayment {
+  id String @id @default(cuid())
+
+  amount      Float
+  paymentType PaymentType
+
+  registerBy   User   @relation("patientPaymentCreatedBy", fields: [registerById], references: [id])
+  registerById String
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PatientAllergy {
+  id String @id @default(cuid())
+
+  name  String
+  level String
+
+  registerBy   User   @relation("patientAllergyCreatedBy", fields: [registerById], references: [id])
+  registerById String
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PatientDiagnosis {
+  id String @id @default(cuid())
+
+  name    String
+  summary String?
+  status  String
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  PatientDiagnosisLog PatientDiagnosisLog[]
+  PatientPlan         PatientPlan[]
+}
+
+model PatientDiagnosisLog {
+  id                 String           @id @default(cuid())
+  log                String
+  patientDiagnosisId String
+  patientDiagnosis   PatientDiagnosis @relation(fields: [patientDiagnosisId], references: [id], onDelete: Cascade)
+  doctorId           String
+  doctor             User             @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}
+
+model PatientPlan {
+  id          String           @id @default(cuid())
+  diagnosisId String
+  diagnosis   PatientDiagnosis @relation(fields: [diagnosisId], references: [id], onDelete: Cascade)
+  summary     String
+  name        String
+  status      PlanStatus
+  dosage      String?
+  duaration   String?
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  PatientPlanLog PatientPlanLog[]
+}
+
+model PatientPlanLog {
+  id            String      @id @default(cuid())
+  log           String
+  patientPlanId String
+  patientPlan   PatientPlan @relation(fields: [patientPlanId], references: [id], onDelete: Cascade)
+  doctorId      String
+  doctor        User        @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Appointment {
+  id             String            @id @default(cuid())
+  patientId      String
+  patient        Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId       String
+  doctor         User              @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  branchId       String
+  branch         Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  date           DateTime          @map(name: "date")
+  time           String
+  duration       Int
+  note           String?
+  status         AppointmentStatus
+  timeMinutes    Int
+  timeEndMinutes Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id          String    @id @default(cuid())
+  title       String
+  content     String
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  recipientId String
+  createdAt   DateTime  @default(now())
+  readAt      DateTime?
+}
+
+model Task {
+  id           String      @id @default(cuid())
+  title        String
+  description  String?
+  dueDate      DateTime?
+  priority     Priority
+  status       TaskStatus
+  createdBy    User        @relation("createdBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById  String
+  assignedTo   User?       @relation("assignedTo", fields: [assignedToId], references: [id], onDelete: Cascade)
+  assignedToId String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  Comment      Comment[]
+  TaskLable    TaskLable[]
+  workSpace    WorkSpace   @relation(fields: [workSpaceId], references: [id], onDelete: Cascade)
+  position     Int
+  workSpaceId  String
+}
+
+model Comment {
+  id          String   @id @default(cuid())
+  content     String
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId      String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdAt   DateTime @default(now())
+}
+
+model Label {
+  id        String      @id @default(cuid())
+  name      String
+  color     String
+  createdAt DateTime    @default(now())
+  TaskLable TaskLable[]
+}
+
+model TaskLable {
+  id        String   @id @default(cuid())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId    String
+  lable     Label    @relation(fields: [lableId], references: [id], onDelete: Cascade)
+  lableId   String
+  createdAt DateTime @default(now())
+}
+
+model WorkSpace {
+  id            String          @id @default(cuid())
+  name          String
+  workspaceUser WorkspaceUser[]
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  Task          Task[]
+}
+
+model WorkspaceUser {
+  id          String    @id @default(cuid())
+  workSpaceId String
+  workspace   WorkSpace @relation(fields: [workSpaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+}
+
+// INVENTORY
+model InventoryItemCategory {
+  id          String          @id @default(cuid())
+  name        String          @unique
+  description String?
+  img         String
+  products    InventoryItem[]
+}
+
+model InventoryItem {
+  id          String  @id @default(cuid())
+  name        String  @unique
+  description String?
+  price       Float
+  quantity    Int     @default(0)
+
+  underStockThreshold Int?
+  overStockThreshold  Int?
+
+  inventoryItemCategoryId String
+  inventoryItemCategory   InventoryItemCategory @relation(fields: [inventoryItemCategoryId], references: [id], onDelete: Cascade)
+  storeId                 String
+  store                   Store                 @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  inventoryLogs InventoryLog[]
+  vendor        Vendor         @relation(fields: [vendorId], references: [id])
+  vendorId      String
+}
+
+model InventoryLog {
+  id              String          @id @default(cuid())
+  inventoryItem   InventoryItem   @relation(fields: [inventoryItemId], references: [id])
+  inventoryItemId String
+  quantity        Int
+  action          InventoryAction
+  storeId         String
+  store           Store           @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime        @default(now())
+}
+
+model Store {
+  id             String          @id @default(cuid())
+  name           String
+  location       String
+  inventoryItems InventoryItem[]
+  inventoryLogs  InventoryLog[]
+}
+
+model Vendor {
+  id      String          @id @default(cuid())
+  name    String
+  contact String?
+  email   String?
+  address String?
+  items   InventoryItem[]
+}
